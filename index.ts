@@ -1,12 +1,12 @@
 import "dotenv/config";
 import { ToolLoopAgent, stepCountIs, tool } from "ai";
 import { z } from "zod";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve, join } from "node:path";
 import { execSync } from "node:child_process";
 import { buildSystemPrompt } from "./src/system";
  
-const cwd = resolve(process.argv[2] || process.cwd());
+const workingDir = resolve(process.argv[2] || process.cwd());
  
 const SAFE_PREFIXES = [
   "ls", "cat", "echo", "pwd", "which", "find",
@@ -68,7 +68,7 @@ const localOps: BashOperations = {
   exec: async (command) => {
     try {
       const stdout = execSync(command, {
-        cwd,
+        cwd: workingDir,
         encoding: "utf-8",
         timeout: 30_000,
       });
@@ -104,7 +104,7 @@ USAGE: path is relative to working directory. offset and limit are optional.
     limit: z.number().optional().describe("Max lines to return"),
   }),
   execute: async ({ path: filePath, offset, limit }) => {
-    const abs = resolve(cwd, filePath);
+    const abs = resolve(workingDir, filePath);
     const content = readFileSync(abs, "utf-8");
     let lines = content.split("\n");
  
@@ -147,7 +147,7 @@ EXAMPLES:
     glob: z.string().optional().describe("File glob filter, e.g. '*.ts'"),
   }),
   execute: async ({ pattern, path: searchPath, glob: globFilter }) => {
-    const dir = resolve(cwd, searchPath || ".");
+    const dir = resolve(workingDir, searchPath || ".");
     const escapedPattern = pattern.replace(/'/g, `'\\''`);
     const escapedGlob = (globFilter || "*").replace(/'/g, `'\\''`);
     const cmd = `grep -rn --exclude-dir=node_modules --exclude-dir=.git --include='${escapedGlob}' -E '${escapedPattern}' '${dir}' 2>/dev/null`;
@@ -180,16 +180,28 @@ EXAMPLES:
 });
 
 const instructions = buildSystemPrompt({
-  workingDirectory: cwd,
+  workingDirectory: workingDir,
   sandboxType: "local",
   toolNames: Object.keys({ read, grep, bash }),
 });
+
+const cwd = resolve(process.argv[2] || process.cwd());
+ 
+const agentsPath = join(cwd, "AGENTS.md");
+const projectContext = existsSync(agentsPath)
+  ? readFileSync(agentsPath, "utf-8")
+  : undefined;
 
 const tools = { read, grep, bash };
  
 const agent = new ToolLoopAgent({
   model: "anthropic/claude-haiku-4-5",
-  instructions,
+  instructions: buildSystemPrompt({
+    workingDirectory: cwd,
+    sandboxType: "local",
+    toolNames: Object.keys(tools),
+    projectContext,
+  }),
   tools,
   stopWhen: stepCountIs(10),
 });
