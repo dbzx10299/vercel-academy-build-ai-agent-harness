@@ -1,8 +1,10 @@
+import "dotenv/config";
 import { ToolLoopAgent, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { execSync } from "node:child_process";
+import { buildSystemPrompt } from "./src/system";
  
 const cwd = resolve(process.argv[2] || process.cwd());
  
@@ -176,23 +178,17 @@ EXAMPLES:
     }
   },
 });
+
+const instructions = buildSystemPrompt({
+  workingDirectory: cwd,
+  sandboxType: "local",
+  toolNames: Object.keys({ read, grep, bash }),
+});
  
 
- 
 const agent = new ToolLoopAgent({
   model: "anthropic/claude-haiku-4-5",
-  instructions: `You are a coding agent working in: ${cwd}
- 
-# Agency
-- USE your tools. Read files, search code, run commands, then answer.
-- Do NOT explain what you WOULD do. Actually do it.
-- Prefer grep for searching, read for viewing files.
-- Use bash only for commands that aren't covered by other tools.
- 
-# Guardrails
-- Prefer simple, minimal changes
-- Search before creating, and reuse existing patterns
-- No new dependencies without asking`,
+  instructions,
   tools: { read, grep, bash },
   stopWhen: stepCountIs(10),
 });
