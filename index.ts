@@ -184,12 +184,13 @@ const instructions = buildSystemPrompt({
   sandboxType: "local",
   toolNames: Object.keys({ read, grep, bash }),
 });
- 
 
+const tools = { read, grep, bash };
+ 
 const agent = new ToolLoopAgent({
   model: "anthropic/claude-haiku-4-5",
   instructions,
-  tools: { read, grep, bash },
+  tools,
   stopWhen: stepCountIs(10),
 });
  
